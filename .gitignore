@@ -1,0 +1,12 @@
+# Entorno virtual: se recrea desde la receta, no se versiona
+venv/
+.conda/
+
+# Caché de Python
+__pycache__/
+*.pyc
+
+# Credenciales y secretos: JAMÁS al repo
+.env
+*.key
+.arcgisprofile
