@@ -99,20 +99,6 @@ def resumen_asset_groups(definicion):
     """
     Recorre los junctionSources y edgeSources de cada domain network y
     devuelve un resumen de sus asset groups y asset types.
-
-    Args:
-        definicion: el diccionario devuelto por get_network_definition.
-
-    Returns:
-        Una lista de diccionarios, uno por domain network:
-        [{
-            "domain_network": nombre,
-            "sources": [
-                {"tipo": "junction"|"edge", "layerId": ..., "sourceId": ...,
-                 "asset_groups": [{"nombre": ..., "codigo": ...,
-                                    "asset_types": [{"nombre": ..., "codigo": ...}]}]}
-            ]
-        }]
     """
     domain_networks = definicion.get("domainNetworks", [])
     resultado = []
@@ -146,18 +132,11 @@ def resumen_asset_groups(definicion):
 
     return resultado
 
+
 def get_system_layers(item, gis, diagnostico=False):
     """
     Devuelve el diccionario systemLayers de la Utility Network: los ids
     de las tablas internas (reglas, asociaciones, subredes, dirty areas).
-
-    Args:
-        item: el Item del Portal (debe ser una Utility Network).
-        gis: la conexión GIS activa.
-        diagnostico: si es True, imprime la respuesta cruda.
-
-    Returns:
-        Un diccionario con los ids de las tablas de sistema, o {} si falla.
     """
     layer_id = get_un_layer_id(item, gis)
     url = f"{item.url}/{layer_id}"
@@ -177,14 +156,6 @@ def get_connectivity_rules(item, gis, diagnostico=False):
     """
     Consulta la tabla de reglas de conectividad de la Utility Network
     y devuelve sus registros como una lista de diccionarios.
-
-    Args:
-        item: el Item del Portal (debe ser una Utility Network).
-        gis: la conexión GIS activa.
-        diagnostico: si es True, imprime información de depuración.
-
-    Returns:
-        Una lista de diccionarios (una por regla), o [] si falla.
     """
     system_layers = get_system_layers(item, gis, diagnostico=diagnostico)
     rules_id = system_layers.get("rulesTableId")
@@ -193,9 +164,7 @@ def get_connectivity_rules(item, gis, diagnostico=False):
         print("⚠ No se encontró rulesTableId en systemLayers.")
         return []
 
-    from arcgis.features import FeatureLayer
     tabla_reglas = FeatureLayer(f"{item.url}/{rules_id}", gis)
-
     resultado = tabla_reglas.query(where="1=1", out_fields="*", return_all_records=True)
 
     if diagnostico:
@@ -203,19 +172,10 @@ def get_connectivity_rules(item, gis, diagnostico=False):
 
     return [f.attributes for f in resultado.features]
 
+
 def get_associations(item, gis, diagnostico=False, limite=None):
     """
     Consulta la tabla de asociaciones reales de la Utility Network.
-
-    Args:
-        item: el Item del Portal (debe ser una Utility Network).
-        gis: la conexión GIS activa.
-        diagnostico: si es True, imprime información de depuración.
-        limite: si se pasa un número, trae solo esa cantidad de registros
-                (útil para explorar sin traer millones de filas de una).
-
-    Returns:
-        Una lista de diccionarios (una por asociación), o [] si falla.
     """
     system_layers = get_system_layers(item, gis)
     assoc_id = system_layers.get("associationsTableId")
@@ -224,7 +184,6 @@ def get_associations(item, gis, diagnostico=False, limite=None):
         print("⚠ No se encontró associationsTableId en systemLayers.")
         return []
 
-    from arcgis.features import FeatureLayer
     tabla_asociaciones = FeatureLayer(f"{item.url}/{assoc_id}", gis)
 
     total = tabla_asociaciones.query(where="1=1", return_count_only=True)
@@ -238,17 +197,11 @@ def get_associations(item, gis, diagnostico=False, limite=None):
 
     return [f.attributes for f in resultado.features]
 
+
 def resumen_asociaciones_por_tipo(item, gis):
     """
     Cuenta cuántas asociaciones hay de cada ASSOCIATIONTYPE, sin traer
     los datos completos (solo conteos, liviano incluso con millones de filas).
-
-    Args:
-        item: el Item del Portal (debe ser una Utility Network).
-        gis: la conexión GIS activa.
-
-    Returns:
-        Un diccionario {tipo: cantidad}.
     """
     system_layers = get_system_layers(item, gis)
     assoc_id = system_layers.get("associationsTableId")
@@ -257,12 +210,9 @@ def resumen_asociaciones_por_tipo(item, gis):
         print("⚠ No se encontró associationsTableId en systemLayers.")
         return {}
 
-    
     tabla = FeatureLayer(f"{item.url}/{assoc_id}", gis)
 
-    # Los tipos de asociación conocidos en la UN (según el dominio ASSOCIATIONSTATUS
-    # que vimos en el esquema): 1=Container, 2=Structure, 4=Content, 8=Attachment, etc.
-    #tipos_conocidos = {1: "Container", 2: "Structure", 4: "Content", 8: "Attachment"}
+    # Confirmado con tipos_de_asociacion_presentes(): 1=Container, 2=Structure, 3=Connectivity
     tipos_conocidos = {1: "Container", 2: "Structure", 3: "Connectivity"}
 
     resumen = {}
@@ -273,23 +223,15 @@ def resumen_asociaciones_por_tipo(item, gis):
 
     return resumen
 
+
 def tipos_de_asociacion_presentes(item, gis):
     """
     Devuelve los valores distintos de ASSOCIATIONTYPE presentes en la tabla
-    de asociaciones, con su conteo, usando agregación en el servidor
-    (liviano, sin traer las filas completas).
-
-    Args:
-        item: el Item del Portal (debe ser una Utility Network).
-        gis: la conexión GIS activa.
-
-    Returns:
-        Una lista de diccionarios: [{"ASSOCIATIONTYPE": codigo, "conteo": N}, ...]
+    de asociaciones, con su conteo, usando agregación en el servidor.
     """
     system_layers = get_system_layers(item, gis)
     assoc_id = system_layers.get("associationsTableId")
 
-    from arcgis.features import FeatureLayer
     tabla = FeatureLayer(f"{item.url}/{assoc_id}", gis)
 
     resultado = tabla.query(
@@ -304,3 +246,71 @@ def tipos_de_asociacion_presentes(item, gis):
     )
 
     return [f.attributes for f in resultado.features]
+
+
+def get_layer_fields(item, gis, layer_index, diagnostico=False):
+    """
+    Consulta la definición de una capa/tabla específica y devuelve sus
+    campos con nombre técnico, alias, tipo y dominio (si tiene).
+
+    Returns:
+        Una lista de diccionarios, uno por campo:
+        [{"nombre": ..., "alias": ..., "tipo": ..., "dominio": {codigo: nombre, ...} o None}]
+    """
+    url = f"{item.url}/{layer_index}"
+    token = gis._con.token
+
+    respuesta = requests.get(url, params={"f": "json", "token": token}, verify=False)
+    data = respuesta.json()
+
+    if diagnostico:
+        print(f"Respuesta cruda de la capa {layer_index} (recortada):")
+        print(json.dumps(data, indent=2)[:2000])
+
+    campos = data.get("fields", [])
+    resultado = []
+
+    for campo in campos:
+        dominio_info = None
+        dominio = campo.get("domain")
+        if dominio and "codedValues" in dominio:
+            dominio_info = {
+                cv["code"]: cv["name"] for cv in dominio["codedValues"]
+            }
+
+        resultado.append({
+            "nombre": campo.get("name"),
+            "alias": campo.get("alias"),
+            "tipo": campo.get("type"),
+            "dominio": dominio_info,
+        })
+
+    return resultado
+
+
+def get_all_layers_fields(item, gis):
+    """
+    Recorre TODAS las capas y tablas del servicio y devuelve sus campos.
+
+    Returns:
+        Un diccionario {nombre_de_capa: [lista de campos]}.
+    """
+    resultado = {}
+
+    for capa in item.layers:
+        try:
+            nombre = capa.properties.name
+            idx = capa.properties.id
+            resultado[nombre] = get_layer_fields(item, gis, idx)
+        except Exception as e:
+            print(f"⚠ No se pudo leer campos de capa [{capa.properties.id}]: {e}")
+
+    for tabla in item.tables:
+        try:
+            nombre = tabla.properties.name
+            idx = tabla.properties.id
+            resultado[nombre] = get_layer_fields(item, gis, idx)
+        except Exception as e:
+            print(f"⚠ No se pudo leer campos de tabla [{tabla.properties.id}]: {e}")
+
+    return resultado
