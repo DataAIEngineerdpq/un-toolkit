@@ -144,3 +144,60 @@ def resumen_asset_groups(definicion):
         resultado.append({"domain_network": dn_nombre, "sources": sources_resumen})
 
     return resultado
+
+def get_system_layers(item, gis, diagnostico=False):
+    """
+    Devuelve el diccionario systemLayers de la Utility Network: los ids
+    de las tablas internas (reglas, asociaciones, subredes, dirty areas).
+
+    Args:
+        item: el Item del Portal (debe ser una Utility Network).
+        gis: la conexión GIS activa.
+        diagnostico: si es True, imprime la respuesta cruda.
+
+    Returns:
+        Un diccionario con los ids de las tablas de sistema, o {} si falla.
+    """
+    layer_id = get_un_layer_id(item, gis)
+    url = f"{item.url}/{layer_id}"
+    token = gis._con.token
+
+    respuesta = requests.get(url, params={"f": "json", "token": token}, verify=False)
+    data = respuesta.json()
+
+    if diagnostico:
+        print("Definición de la capa UN (recortada):")
+        print(json.dumps(data, indent=2)[:2000])
+
+    return data.get("systemLayers", {})
+
+
+def get_connectivity_rules(item, gis, diagnostico=False):
+    """
+    Consulta la tabla de reglas de conectividad de la Utility Network
+    y devuelve sus registros como una lista de diccionarios.
+
+    Args:
+        item: el Item del Portal (debe ser una Utility Network).
+        gis: la conexión GIS activa.
+        diagnostico: si es True, imprime información de depuración.
+
+    Returns:
+        Una lista de diccionarios (una por regla), o [] si falla.
+    """
+    system_layers = get_system_layers(item, gis, diagnostico=diagnostico)
+    rules_id = system_layers.get("rulesTableId")
+
+    if rules_id is None:
+        print("⚠ No se encontró rulesTableId en systemLayers.")
+        return []
+
+    from arcgis.features import FeatureLayer
+    tabla_reglas = FeatureLayer(f"{item.url}/{rules_id}", gis)
+
+    resultado = tabla_reglas.query(where="1=1", out_fields="*", return_all_records=True)
+
+    if diagnostico:
+        print(f"\nReglas encontradas: {len(resultado.features)}")
+
+    return [f.attributes for f in resultado.features]
