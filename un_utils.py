@@ -76,12 +76,6 @@ def resumen_domain_networks(definicion):
     """
     Recibe el dataElement de la Utility Network y devuelve un resumen
     legible de sus domain networks y tiers.
-
-    Args:
-        definicion: el diccionario devuelto por get_network_definition.
-
-    Returns:
-        Una lista de diccionarios: [{"nombre": ..., "es_estructura": ..., "tiers": [...]}]
     """
     domain_networks = definicion.get("domainNetworks", [])
     resultado = []
@@ -96,5 +90,57 @@ def resumen_domain_networks(definicion):
             "es_estructura": dn.get("isStructureNetwork", False),
             "tiers": tiers,
         })
+
+    return resultado
+
+
+def resumen_asset_groups(definicion):
+    """
+    Recorre los junctionSources y edgeSources de cada domain network y
+    devuelve un resumen de sus asset groups y asset types.
+
+    Args:
+        definicion: el diccionario devuelto por get_network_definition.
+
+    Returns:
+        Una lista de diccionarios, uno por domain network:
+        [{
+            "domain_network": nombre,
+            "sources": [
+                {"tipo": "junction"|"edge", "layerId": ..., "sourceId": ...,
+                 "asset_groups": [{"nombre": ..., "codigo": ...,
+                                    "asset_types": [{"nombre": ..., "codigo": ...}]}]}
+            ]
+        }]
+    """
+    domain_networks = definicion.get("domainNetworks", [])
+    resultado = []
+
+    for dn in domain_networks:
+        dn_nombre = dn.get("domainNetworkName", "(sin nombre)")
+        sources_resumen = []
+
+        for tipo_fuente, clave in [("junction", "junctionSources"), ("edge", "edgeSources")]:
+            for source in dn.get(clave, []):
+                asset_groups = []
+                for ag in source.get("assetGroups", []):
+                    asset_types = [
+                        {"nombre": at.get("assetTypeName", "(sin nombre)"), "codigo": at.get("assetTypeCode")}
+                        for at in ag.get("assetTypes", [])
+                    ]
+                    asset_groups.append({
+                        "nombre": ag.get("assetGroupName", "(sin nombre)"),
+                        "codigo": ag.get("assetGroupCode"),
+                        "asset_types": asset_types,
+                    })
+
+                sources_resumen.append({
+                    "tipo": tipo_fuente,
+                    "layerId": source.get("layerId"),
+                    "sourceId": source.get("sourceId"),
+                    "asset_groups": asset_groups,
+                })
+
+        resultado.append({"domain_network": dn_nombre, "sources": sources_resumen})
 
     return resultado
