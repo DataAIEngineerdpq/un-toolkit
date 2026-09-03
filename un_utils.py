@@ -3,6 +3,7 @@
 import json
 import requests
 from arcgis.features import FeatureLayerCollection
+from arcgis.features import FeatureLayer
 
 
 def es_utility_network(item, gis, diagnostico=False):
@@ -199,5 +200,107 @@ def get_connectivity_rules(item, gis, diagnostico=False):
 
     if diagnostico:
         print(f"\nReglas encontradas: {len(resultado.features)}")
+
+    return [f.attributes for f in resultado.features]
+
+def get_associations(item, gis, diagnostico=False, limite=None):
+    """
+    Consulta la tabla de asociaciones reales de la Utility Network.
+
+    Args:
+        item: el Item del Portal (debe ser una Utility Network).
+        gis: la conexión GIS activa.
+        diagnostico: si es True, imprime información de depuración.
+        limite: si se pasa un número, trae solo esa cantidad de registros
+                (útil para explorar sin traer millones de filas de una).
+
+    Returns:
+        Una lista de diccionarios (una por asociación), o [] si falla.
+    """
+    system_layers = get_system_layers(item, gis)
+    assoc_id = system_layers.get("associationsTableId")
+
+    if assoc_id is None:
+        print("⚠ No se encontró associationsTableId en systemLayers.")
+        return []
+
+    from arcgis.features import FeatureLayer
+    tabla_asociaciones = FeatureLayer(f"{item.url}/{assoc_id}", gis)
+
+    total = tabla_asociaciones.query(where="1=1", return_count_only=True)
+    if diagnostico:
+        print(f"Total de asociaciones en la red: {total}")
+
+    if limite:
+        resultado = tabla_asociaciones.query(where="1=1", out_fields="*", result_record_count=limite)
+    else:
+        resultado = tabla_asociaciones.query(where="1=1", out_fields="*", return_all_records=True)
+
+    return [f.attributes for f in resultado.features]
+
+def resumen_asociaciones_por_tipo(item, gis):
+    """
+    Cuenta cuántas asociaciones hay de cada ASSOCIATIONTYPE, sin traer
+    los datos completos (solo conteos, liviano incluso con millones de filas).
+
+    Args:
+        item: el Item del Portal (debe ser una Utility Network).
+        gis: la conexión GIS activa.
+
+    Returns:
+        Un diccionario {tipo: cantidad}.
+    """
+    system_layers = get_system_layers(item, gis)
+    assoc_id = system_layers.get("associationsTableId")
+
+    if assoc_id is None:
+        print("⚠ No se encontró associationsTableId en systemLayers.")
+        return {}
+
+    
+    tabla = FeatureLayer(f"{item.url}/{assoc_id}", gis)
+
+    # Los tipos de asociación conocidos en la UN (según el dominio ASSOCIATIONSTATUS
+    # que vimos en el esquema): 1=Container, 2=Structure, 4=Content, 8=Attachment, etc.
+    #tipos_conocidos = {1: "Container", 2: "Structure", 4: "Content", 8: "Attachment"}
+    tipos_conocidos = {1: "Container", 2: "Structure", 3: "Connectivity"}
+
+    resumen = {}
+    for codigo, nombre in tipos_conocidos.items():
+        cantidad = tabla.query(where=f"ASSOCIATIONTYPE={codigo}", return_count_only=True)
+        if cantidad > 0:
+            resumen[nombre] = cantidad
+
+    return resumen
+
+def tipos_de_asociacion_presentes(item, gis):
+    """
+    Devuelve los valores distintos de ASSOCIATIONTYPE presentes en la tabla
+    de asociaciones, con su conteo, usando agregación en el servidor
+    (liviano, sin traer las filas completas).
+
+    Args:
+        item: el Item del Portal (debe ser una Utility Network).
+        gis: la conexión GIS activa.
+
+    Returns:
+        Una lista de diccionarios: [{"ASSOCIATIONTYPE": codigo, "conteo": N}, ...]
+    """
+    system_layers = get_system_layers(item, gis)
+    assoc_id = system_layers.get("associationsTableId")
+
+    from arcgis.features import FeatureLayer
+    tabla = FeatureLayer(f"{item.url}/{assoc_id}", gis)
+
+    resultado = tabla.query(
+        where="1=1",
+        out_fields="ASSOCIATIONTYPE",
+        group_by_fields_for_statistics="ASSOCIATIONTYPE",
+        out_statistics=[{
+            "statisticType": "count",
+            "onStatisticField": "ASSOCIATIONTYPE",
+            "outStatisticFieldName": "conteo"
+        }]
+    )
 
     return [f.attributes for f in resultado.features]
