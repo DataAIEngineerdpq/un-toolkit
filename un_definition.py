@@ -10,6 +10,10 @@ from un_utils import (
     tipos_de_asociacion_presentes,
 )
 
+from un_utils import get_layer_fields, get_all_layers_fields
+
+
+
 gis = GIS(config.PORTAL_URL, config.USUARIO, getpass("Contraseña del Portal: "))
 print("Conectado como:", gis.users.me.username, "\n")
 
@@ -36,3 +40,13 @@ else:
     print("\n=== Valores reales de ASSOCIATIONTYPE (agregación en servidor) ===")
     for fila in tipos_de_asociacion_presentes(item, gis):
         print(fila)
+
+
+# ...
+    print("\n=== Campos de 'Dispositivo Eléctrico' (capa 0) ===")
+    campos = get_layer_fields(item, gis, 0)
+    for c in campos:
+        linea = f"  {c['nombre']} ({c['alias']}) — {c['tipo']}"
+        if c['dominio']:
+            linea += f" — dominio: {c['dominio']}"
+        print(linea)
